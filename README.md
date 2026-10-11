@@ -328,3 +328,183 @@ This allows the CodeBuild role to authenticate with ECR and push an image to you
 Step 3: Retry the build
 Return to CodeBuild → springboot-aws-build → Start build.
 
+
+Un current project-la namma use panradhu:
+- GitHub: sarathi03/springboot-aws-deploy
+- AWS CodeBuild: springboot-aws-build
+- ECR repository: spring-demo-ecr
+- AWS Region: ap-south-1
+- Application: Spring Boot + Maven + Docker
+Un build already success aagirukku. So namma working configuration-ai mothama rewrite panna vendam. First important values-ai verify pannittu, thevaiyana changes mattum pannuvom.
+1. buildspec.yml-la enna enna configurable values irukku?
+
+A. AWS account ID and Region
+ECR login and repository URI-la irukkum.
+Idhai AWS account and ECR console-la irundhu edukkanum.
+
+
+
+
+B. ECR repository name
+Docker image enga store aaganum nu decide pannum.
+ECR → Private repositories-la irundhu edukkanum.
+
+
+
+
+C. Maven and JAR filename
+Java application build and Docker packaging-ku use aagum.
+pom.xml, Dockerfile, and target/ folder-la verify pannanum.
+
+
+
+
+D. Image tags and container name
+Image versioning and future deployment integration-ku use aagum.
+Build configuration and, if using ECS, ECS task definition-la irundhu verify pannanum.
+
+
+
+2. Step A — AWS Account ID enga irundhu edukkanum?
+Un original YAML-la indha line irukku:
+- aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 258975980349.dkr.ecr.ap-south-1.amazonaws.com
+
+
+Inga 258975980349 dhaan account ID.
+Aana nee share panna ECR screenshot-la 594980084703 nu account ID therinjadhu. Idhu dhaan namma first verify panna vendiya value.
+Eppadi edukkanum?
+1. AWS Console → Amazon ECR open pannu.
+2. Region ap-south-1 select pannu.
+3. spring-demo-ecr repository open pannu.
+4. Repository URI copy pannu.
+Example:
+594980084703.dkr.ecr.ap-south-1.amazonaws.com/spring-demo-ecr
+
+
+URI-la:
+- 594980084703 = AWS account ID
+- ap-south-1 = Region
+- spring-demo-ecr = Repository name
+Indha URI dhaan ECR login and repository configuration-ku source of truth.
+3. Step B — ECR repository name enga change pannanum?
+Un YAML-la:
+- REPOSITORY_URI=258975980349.dkr.ecr.ap-south-1.amazonaws.com/spring-demo-ecr
+
+
+Indha line-la irukkura full repository URI-ai un ECR console-la irundhu copy panna URI-oda replace pannanum.
+Example:
+- REPOSITORY_URI=594980084703.dkr.ecr.ap-south-1.amazonaws.com/spring-demo-ecr
+
+
+Account ID, region, repository name moonume correct-ah irukkanum.
+Important: ECR repository vera AWS account-la irundha, account ID change pannradhu mattum podhadhu. Cross-account IAM/repository permissions-um configure pannanum.
+4. Step C — JAR filename enga irundhu edukkanum?
+Un original YAML-la:
+artifacts:
+  files:
+    - imagedefinitions.json
+    - target/springboot-aws-deploy.jar
+
+
+Aana nee munnadi share panna Git output-la indha file therinjadhu:
+target/springboot-aws-deploy-service.jar
+
+
+Rendum different filenames da. Idhai verify pannanum.
+EC2 project directory-la run pannu:
+ls -lh target/*.jar
+
+
+Next, pom.xml-la artifactId and build configuration check pannu.
+Example:
+<artifactId>springboot-aws-deploy-service</artifactId>
+
+
+Indha artifactId JAR filename-ai determine pannalaam; aana Maven configuration-la finalName set pannirundha filename vera irukkalaam.
+Actual filename springboot-aws-deploy-service.jar na, artifact path-ai ippadi change pannalaam:
+artifacts:
+  files:
+    - imagedefinitions.json
+    - target/springboot-aws-deploy-service.jar
+
+
+But JAR file-ai Docker image-kulla copy pannura Dockerfile-layum correct filename use aagudha nu verify pannanum.
+5. Step D — DOCKER_CONTAINER_NAME change pannanuma?
+Un YAML-la:
+- DOCKER_CONTAINER_NAME=spring-demo-ecr
+
+
+Idhu ECR repository name. Aana indha variable use panni generate panra imagedefinitions.json-la container name-ah write pannudhu.
+ECS use panna pora na, ECS task definition-la irukkura container name-ai eduthu inga use pannanum.
+Example: ECS task definition container name springboot-app na:
+- DOCKER_CONTAINER_NAME=springboot-app
+
+
+EC2-la direct Docker run mattum pannina, imagedefinitions.json and DOCKER_CONTAINER_NAME deployment-ku thevai illa. ECS deployment plan irundha mattum container name match pannanum.
+6. Step E — Maven command change pannanuma?
+Un YAML-la:
+- mvn clean install
+
+
+Idhu Maven lifecycle-ai execute panni application-ai build pannum; tests-um run aagum.
+Current build success aagirukkuradhala, idhai ippo change panna thevai illa.
+Maven Wrapper (mvnw) repository-la irundhu, project wrapper version-ai consistent-ah use pannanum-na:
+- chmod +x mvnw
+- ./mvnw clean install
+
+
+Indha approach use pannina CodeBuild environment-la Maven version mismatch avoid panna help aagum. Aana un existing build successful-na, idhu optional improvement mattum.
+7. Step F — Image tags change pannanuma?
+Un YAML-la:
+- IMAGE_TAG=build-$(echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}')
+
+
+Idhu unique build tag create pannudhu. Idhai ippo change panna vendam.
+Un YAML already rendu tags create pannudhu:
+- docker build -t $REPOSITORY_URI:latest .
+- docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+
+
+And rendu tags-um push pannudhu:
+- docker push $REPOSITORY_URI:latest
+- docker push $REPOSITORY_URI:$IMAGE_TAG
+
+
+Idhu useful da: latest current image-ai identify panna convenient; unique build tag specific version-ai trace panna useful.
+8. Un original YAML-la change panna vendiya lines — checklist
+Configuration checklist
+0 of 6
+
+[ ] Verify ECR repository URI
+ECR console-la irundhu full URI copy pannu.
+
+
+[ ] Update ECR login registry
+Account ID and region correct-ah irukkanum.
+
+
+[ ] Update REPOSITORY_URI
+Same verified ECR repository URI use pannu.
+
+
+[ ] Verify actual JAR filename
+ls -lh target/*.jar output-oda artifact path compare pannu.
+
+
+[ ] Verify Dockerfile
+Dockerfile copy panra JAR filename match aaganum.
+
+
+[ ] Verify ECS container name
+ECS use panna pora na mattum task definition-oda match pannu.
+
+
+
+9. Finally, YAML-ai eppadi edit pannanum?
+1. GitHub repository sarathi03/springboot-aws-deploy open pannu.
+2. Root directory-la buildspec.yml open pannu.
+3. Edit icon click pannu.
+4. Verified ECR URI and actual artifact filename mattum update pannu.
+5. Commit changes to the correct branch.
+6. CodeBuild-la manual-ah Start build panni logs verify pannu.
+7. ECR-la latest image and new unique build tag update aagirukka nu check pannu.
